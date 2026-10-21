@@ -80,3 +80,18 @@ llamacpp-mng serve ./some/config.yaml      # or any YAML file
 llamacpp-mng serve qwen3 -- --port 9000    # extra flags after -- override the config
 llamacpp-mng serve qwen3 --dry-run         # just print the command
 ```
+
+## Serve all models on one port (like ollama)
+
+```sh
+llamacpp-mng serve                         # no config name
+```
+
+This starts `llama-server` in router mode: every config in `~/.llamacpp/configs` is available on a
+single port and loaded on its first request. Clients pick the model with the config name
+(`"model": "qwen3"`), and `GET /v1/models` lists them.
+
+Server-wide settings go in `~/.llamacpp/router.yaml` (see [examples/router.yaml](examples/router.yaml)):
+port, how many models can stay loaded at once (`models-max`, least recently used is unloaded first)
+and when to unload idle ones (`sleep-idle-seconds`). `host`/`port` in the model configs are
+ignored in this mode.

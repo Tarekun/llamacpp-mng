@@ -6,6 +6,8 @@ Everything lives under ~/.llamacpp (override with $LLAMACPP_HOME):
         llama.cpp/   git checkout of the sources
         build/       cmake build tree (binaries in build/bin)
         configs/     one YAML file per model to serve
+        router.yaml  server settings when serving all models on one port (optional)
+        router.ini   model presets generated from configs/ for that mode
 """
 
 import argparse
@@ -23,6 +25,8 @@ HOME = Path(os.environ.get("LLAMACPP_HOME", "~/.llamacpp")).expanduser()
 SRC_DIR = HOME / "llama.cpp"
 BUILD_DIR = HOME / "build"
 CONFIG_DIR = HOME / "configs"
+ROUTER_CONFIG = HOME / "router.yaml"
+ROUTER_PRESET = HOME / "router.ini"
 SERVER_BIN = BUILD_DIR / "bin" / ("Release/llama-server.exe" if os.name == "nt" else "llama-server")
 REPO_URL = "https://github.com/ggml-org/llama.cpp"
 
@@ -92,24 +96,43 @@ def install(args):
     run([SERVER_BIN, "--version"])
 
 
-def config_to_args(config):
-    """Map YAML keys to llama-server flags.
+def config_flags(config):
+    """Yield (flag, value) pairs from a YAML config, value is None for bare flags.
 
     key: value  -> --key value
     key: true   -> --key
     key: false  -> --no-key
     key: [a, b] -> --key a --key b
     """
-    args = []
     for key, value in config.items():
         for item in value if isinstance(value, list) else [value]:
             if item is True:
-                args.append(f"--{key}")
+                yield key, None
             elif item is False:
-                args.append(f"--no-{key}")
+                yield f"no-{key}", None
             elif item is not None:
-                args += [f"--{key}", os.path.expanduser(str(item))]
+                yield key, os.path.expanduser(str(item))
+
+
+def config_to_args(config):
+    args = []
+    for flag, value in config_flags(config):
+        args += [f"--{flag}"] if value is None else [f"--{flag}", value]
     return args
+
+
+def write_preset(path):
+    """Write every config as a model section of a router preset file (INI)."""
+    lines = ["version = 1"]
+    for config_path in sorted(CONFIG_DIR.glob("*.yaml")):
+        lines += ["", f"[{config_path.stem}]"]
+        for flag, value in config_flags(load_config(config_path)):
+            lines.append(f"{flag} = {'true' if value is None else value}")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def load_config(path):
+    return yaml.safe_load(path.read_text()) or {}
 
 
 def find_config(name):
@@ -123,7 +146,14 @@ def serve(args):
     if not SERVER_BIN.exists():
         sys.exit("error: llama-server not found, run `llamacpp-mng install` first")
 
-    config = yaml.safe_load(find_config(args.config).read_text()) or {}
+    if args.config:
+        config = load_config(find_config(args.config))
+    else:
+        # Router mode: all configs on one port, each loaded on first request (like ollama).
+        write_preset(ROUTER_PRESET)
+        config = load_config(ROUTER_CONFIG) if ROUTER_CONFIG.exists() else {}
+        config["models-preset"] = str(ROUTER_PRESET)
+
     cmd = [str(SERVER_BIN), *config_to_args(config), *args.extra]
     print("+", shlex.join(cmd), file=sys.stderr, flush=True)
     if args.dry_run:
@@ -139,27 +169,33 @@ def list_configs(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="llamacpp-mng", description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        prog="llamacpp-mng", description=__doc__,
+        epilog="Arguments after `--` are passed to cmake (install) or llama-server (serve).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     p = commands.add_parser("install", aliases=["update"], help="clone/update and build llama.cpp")
     p.add_argument("--ref", default="master", help="branch or tag to build (default: master)")
     p.add_argument("--backend", choices=BACKENDS, help="GPU backend (default: auto-detect)")
     p.add_argument("--clean", action="store_true", help="wipe the build directory first")
-    p.add_argument("extra", nargs="*", help="extra cmake arguments, after `--`")
     p.set_defaults(func=install)
 
-    p = commands.add_parser("serve", help="run llama-server with a YAML config")
-    p.add_argument("config", help=f"config name in {CONFIG_DIR} or path to a YAML file")
+    p = commands.add_parser("serve", help="run llama-server with one config, or all of them on demand")
+    p.add_argument("config", nargs="?",
+                   help=f"config name in {CONFIG_DIR} or path to a YAML file; omit to serve all configs")
     p.add_argument("--dry-run", action="store_true", help="only print the command")
-    p.add_argument("extra", nargs="*", help="extra llama-server arguments, after `--`")
     p.set_defaults(func=serve)
 
     p = commands.add_parser("list", help="list available configs")
     p.set_defaults(func=list_configs)
 
-    args = parser.parse_args()
+    # Split off the `--` arguments by hand: argparse can't tell them from an omitted config.
+    argv = sys.argv[1:]
+    split = argv.index("--") if "--" in argv else len(argv)
+    args = parser.parse_args(argv[:split])
+    args.extra = argv[split + 1:]
     try:
         args.func(args)
     except subprocess.CalledProcessError as e:

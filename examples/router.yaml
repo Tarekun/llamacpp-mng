@@ -1,0 +1,12 @@
+# Copy to ~/.llamacpp/router.yaml (optional). Used by `llamacpp-mng serve` with no config name:
+# every config in ~/.llamacpp/configs is served on this one port and loaded on first request,
+# like ollama. Clients pick a model with the config name, e.g. "model": "qwen3".
+# Keys are llama-server flags, as in the model configs; any other flag set here (e.g. ctx-size)
+# applies to every model that doesn't set it itself.
+
+host: 0.0.0.0
+port: 8080
+models-max: 1            # models kept loaded at once (default 4). When full, loading another one
+                         # unloads the least recently used idle model. Keep 1 on small GPUs
+sleep-idle-seconds: 300  # unload a model after 5 minutes without requests, like ollama's keep_alive
+# api-key: change-me
