@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llamacpp-mng"
+version = "0.1.0"
+description = "Simple manager for a local llama.cpp installation"
+requires-python = ">=3.9"
+dependencies = ["pyyaml"]
+
+[project.scripts]
+llamacpp-mng = "llamacpp_mng:main"
+
+[tool.setuptools]
+py-modules = ["llamacpp_mng"]

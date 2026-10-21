@@ -1,0 +1,74 @@
+# Copy to ~/.llamacpp/configs/qwen3.yaml and run: llamacpp-mng serve qwen3
+# Every key is a llama-server flag without the leading `--`
+# (full list: ~/.llamacpp/build/bin/llama-server --help). Commented-out keys are optional.
+
+# --- Model -------------------------------------------------------------------
+# <user>/<repo>:<quant> from Hugging Face (downloaded once to ~/.cache/llama.cpp),
+# or a local file with `model:`.
+hf-repo: Qwen/Qwen3-30B-A3B-GGUF:Q4_K_M
+# model: ~/models/Qwen3-235B-A22B-Q4_K_M.gguf
+alias: qwen3-30b-a3b   # model name reported by the OpenAI-compatible API
+
+# --- Sampling ----------------------------------------------------------------
+# Server-side defaults; clients can override them per request. For each token, the filters
+# (top-k, top-p, min-p) first narrow the list of candidates, then temperature decides how
+# randomly to pick among what's left.
+# Qwen3 recommends: thinking mode     temp 0.6, top-p 0.95, top-k 20, min-p 0
+#                   non-thinking mode temp 0.7, top-p 0.8,  top-k 20, min-p 0
+temp: 0.6              # randomness. 0 = always the most likely token (deterministic); 0.1-0.3 for code
+                       # and extraction; 0.6-0.8 for chat; >1 gets creative, then incoherent
+top-k: 20              # keep only the K most likely tokens (0 = off). Hard cut of the unlikely tail
+top-p: 0.95            # keep the most likely tokens until their probabilities sum to P (1.0 = off).
+                       # Adapts to confidence: few candidates when the model is sure, more when it isn't
+min-p: 0.0             # drop tokens less likely than P x the best token's probability (0 = off).
+                       # Alternative to top-p; 0.05-0.1 is typical (llama.cpp default: 0.05)
+# presence-penalty: 1.0  # penalize tokens already used (0-2, 0 = off). Qwen suggests it if a quantized
+                         # model loops on itself; too high causes language mixing
+# reasoning: "off"       # disable Qwen3's thinking (then use the non-thinking sampling values)
+# reasoning-budget: 4096 # cap thinking tokens (-1 = unlimited)
+
+# --- Context and KV cache ----------------------------------------------------
+ctx-size: 32768        # max tokens (prompt + reply) per request; KV cache memory grows linearly with it
+flash-attn: "on"       # faster, leaner attention; needed to quantize the V cache. Quote on/off!
+cache-type-k: q8_0     # KV cache precision: f16 (default), q8_0 halves its memory at ~no quality cost,
+cache-type-v: q8_0     # q4_0 quarters it but starts to hurt quality on long contexts
+
+# --- Server ------------------------------------------------------------------
+host: 0.0.0.0          # 0.0.0.0 = reachable from the LAN, 127.0.0.1 = this machine only
+port: 8080
+# parallel: 1          # concurrent request slots; ctx-size is split evenly between them
+# api-key: change-me   # require `Authorization: Bearer change-me` on requests
+
+# --- MoE CPU offloading ------------------------------------------------------
+# MoE models are large in total but only use a few experts per token (30B-A3B = 30B total,
+# 3B active). Putting everything on the GPU except the expert weights, which stay in system RAM,
+# lets you run models far bigger than your VRAM at usable speed: the GPU handles attention and
+# the KV cache, and the CPU only computes the few active experts.
+#
+# If you leave these unset, llama-server's `fit` (on by default) picks values that fit your
+# memory automatically. Set them yourself when you want control.
+n-gpu-layers: all      # offload every layer to the GPU...
+n-cpu-moe: 24          # ...but keep the experts of the first N layers in RAM. Lower it until VRAM
+                       # is nearly full; each layer moved to GPU is faster. Layers: 30B-A3B = 48, 235B-A22B = 94
+# cpu-moe: true        # all experts in RAM: minimum VRAM, for the biggest models or small GPUs
+# moe-cache-mib: 4096  # spare VRAM used as a cache for the experts that stay in RAM
+# threads: 8           # CPU threads for the experts in RAM; physical core count is usually best
+# override-tensor: 'blk\.([0-9]|1[0-9])\.ffn_.*_exps\.=CPU'   # manual alternative: regex on tensor names
+# fit: "off"           # disable auto-fitting, use exactly what's written here
+
+# --- Speculative decoding (optional) -----------------------------------------
+# A small, fast "draft" model guesses the next few tokens and the big model verifies them all in
+# a single pass, keeping the ones it agrees with. Quality is the same as the big model alone; it's
+# just faster when guesses are often right (code, structured output, repetitive text).
+# - The draft must use the same tokenizer as the big model: e.g. Qwen3-0.6B/1.7B for any Qwen3.
+# - Keep the draft fully on the GPU, or it slows things down instead.
+# - Biggest gains are on large dense models. MoEs with experts in RAM gain less, because verifying
+#   several tokens at once touches more experts.
+# spec-type: draft-simple
+# hf-repo-draft: Qwen/Qwen3-0.6B-GGUF:Q8_0   # or model-draft: ~/models/Qwen3-0.6B-Q8_0.gguf
+# spec-draft-ngl: all     # whole draft model on the GPU
+# spec-draft-n-max: 8     # max tokens drafted per step (default 3); raise it if most guesses get accepted
+# spec-draft-p-min: 0.75  # stop drafting early once the draft model's confidence drops below this
+#
+# No draft model? `spec-type: ngram-mod` drafts by matching text already in the context (great for
+# code edits and RAG) and costs no extra memory. See docs/speculative.md in the llama.cpp repo.
