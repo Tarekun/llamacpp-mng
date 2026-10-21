@@ -23,7 +23,7 @@ HOME = Path(os.environ.get("LLAMACPP_HOME", "~/.llamacpp")).expanduser()
 SRC_DIR = HOME / "llama.cpp"
 BUILD_DIR = HOME / "build"
 CONFIG_DIR = HOME / "configs"
-SERVER_BIN = BUILD_DIR / "bin" / "llama-server"
+SERVER_BIN = BUILD_DIR / "bin" / ("Release/llama-server.exe" if os.name == "nt" else "llama-server")
 REPO_URL = "https://github.com/ggml-org/llama.cpp"
 
 BACKENDS = ["cpu", "cuda", "vulkan", "hip", "metal"]
@@ -37,8 +37,10 @@ def run(cmd, cwd=None):
 def detect_backend():
     if platform.system() == "Darwin":
         return "metal"
-    if shutil.which("nvcc") or Path("/usr/local/cuda/bin/nvcc").exists():
+    if shutil.which("nvcc"):
         return "cuda"
+    if shutil.which("nvidia-smi") or Path("/etc/nv_tegra_release").exists():  # the latter: Jetson
+        sys.exit("error: NVIDIA GPU found but no CUDA toolkit (nvcc), install it or pass --backend cpu")
     return "cpu"
 
 
@@ -52,6 +54,10 @@ def backend_flags(backend):
 
 
 def install(args):
+    # Linux and Jetson CUDA installs often leave nvcc off PATH.
+    if Path("/usr/local/cuda/bin").is_dir():
+        os.environ["PATH"] += os.pathsep + "/usr/local/cuda/bin"
+
     for tool in ("git", "cmake"):
         if not shutil.which(tool):
             sys.exit(f"error: '{tool}' not found, please install it first")
@@ -120,8 +126,11 @@ def serve(args):
     config = yaml.safe_load(find_config(args.config).read_text()) or {}
     cmd = [str(SERVER_BIN), *config_to_args(config), *args.extra]
     print("+", shlex.join(cmd), file=sys.stderr, flush=True)
-    if not args.dry_run:
-        os.execv(cmd[0], cmd)
+    if args.dry_run:
+        return
+    if os.name == "nt":  # Windows has no real exec: run it as a child instead
+        sys.exit(subprocess.call(cmd))
+    os.execv(cmd[0], cmd)
 
 
 def list_configs(args):
@@ -155,6 +164,8 @@ def main():
         args.func(args)
     except subprocess.CalledProcessError as e:
         sys.exit(e.returncode)
+    except KeyboardInterrupt:
+        sys.exit(130)
 
 
 if __name__ == "__main__":

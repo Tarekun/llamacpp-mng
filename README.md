@@ -14,11 +14,34 @@ Everything lives under `~/.llamacpp` (override with `$LLAMACPP_HOME`):
 
 ## Setup
 
-Requires `git`, `cmake` and a C++ compiler (plus the CUDA/Vulkan/ROCm SDK if you want GPU support).
+Requires `git`, `cmake` >= 3.24 and a C++ compiler (plus the CUDA/Vulkan/ROCm SDK if you want GPU support).
 
 ```sh
 pipx install .        # or: uv tool install .
 ```
+
+With an older cmake, CUDA builds aren't compiled for your exact GPU, and the driver JIT-compiles
+the kernels when a model loads, which is slow. Ubuntu 22.04 / Mint 21 ship cmake 3.22, so get a
+newer one with `pipx install cmake` (also works on Jetson).
+
+### Linux (NVIDIA)
+
+Install the CUDA toolkit (`nvcc`) as well as the driver; the driver alone isn't enough to build:
+`sudo apt install build-essential nvidia-cuda-toolkit`, or NVIDIA's own packages for a newer CUDA.
+`/usr/local/cuda/bin` is picked up even if it isn't on your PATH.
+
+### Jetson
+
+Use JetPack 6+, which ships CUDA 12 in `/usr/local/cuda`. Memory is shared between CPU and GPU,
+so don't use the MoE CPU offloading options: put the whole model on the GPU (`n-gpu-layers: all`).
+For full speed, run `sudo nvpmodel -m 0 && sudo jetson_clocks` before serving.
+
+### Windows
+
+Install, in this order: Visual Studio Build Tools (with the "Desktop development with C++"
+workload), then the CUDA toolkit, so that it adds its Visual Studio integration. Install git and
+cmake too, then run everything from a normal terminal. Alternatively, WSL2 with CUDA works exactly
+like Linux.
 
 ## Install / update llama.cpp
 
