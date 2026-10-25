@@ -1,0 +1,59 @@
+# --- Model -------------------------------------------------------------------
+hf-repo: unsloth/Qwen3.6-35B-A3B-GGUF
+alias: qwen3.6-35b-a3b   # model name reported by the OpenAI-compatible API
+
+# --- Sampling ----------------------------------------------------------------
+temp: 0.7
+top-k: 20
+top-p: 0.8
+min-p: 0.0
+reasoning: "off"
+presence-penalty: 1.5
+repeat-penalty: 1.0
+# reasoning-budget: 4096 # cap thinking tokens (-1 = unlimited)
+
+# --- Context and KV cache ----------------------------------------------------
+ctx-size: 98304        # max tokens (prompt + reply) per request; KV cache memory grows linearly with it
+flash-attn: "on"       # faster, leaner attention; needed to quantize the V cache. Quote on/off!
+cache-type-k: q8_0     # KV cache precision: f16 (default), q8_0 halves its memory at ~no quality cost,
+cache-type-v: q8_0     # q4_0 quarters it but starts to hurt quality on long contexts
+
+# --- Server ------------------------------------------------------------------
+host: 0.0.0.0
+port: 12345
+# parallel: 1          # concurrent request slots; ctx-size is split evenly between them
+# api-key: change-me   # require `Authorization: Bearer change-me` on requests
+
+# --- MoE CPU offloading ------------------------------------------------------
+# MoE models are large in total but only use a few experts per token (30B-A3B = 30B total,
+# 3B active). Putting everything on the GPU except the expert weights, which stay in system RAM,
+# lets you run models far bigger than your VRAM at usable speed: the GPU handles attention and
+# the KV cache, and the CPU only computes the few active experts.
+#
+# If you leave these unset, llama-server's `fit` (on by default) picks values that fit your
+# memory automatically. Set them yourself when you want control.
+# n-gpu-layers: all      # offload every layer to the GPU...
+# n-cpu-moe: 24          # ...but keep the experts of the first N layers in RAM. Lower it until VRAM
+                       # is nearly full; each layer moved to GPU is faster. Layers: 30B-A3B = 48, 235B-A22B = 94
+# cpu-moe: true        # all experts in RAM: minimum VRAM, for the biggest models or small GPUs
+# moe-cache-mib: 4096  # spare VRAM used as a cache for the experts that stay in RAM
+# threads: 8           # CPU threads for the experts in RAM; physical core count is usually best
+# override-tensor: 'blk\.([0-9]|1[0-9])\.ffn_.*_exps\.=CPU'   # manual alternative: regex on tensor names
+# fit: "off"           # disable auto-fitting, use exactly what's written here
+
+# --- Speculative decoding (optional) -----------------------------------------
+# A small, fast "draft" model guesses the next few tokens and the big model verifies them all in
+# a single pass, keeping the ones it agrees with. Quality is the same as the big model alone; it's
+# just faster when guesses are often right (code, structured output, repetitive text).
+# - The draft must use the same tokenizer as the big model: e.g. Qwen3-0.6B/1.7B for any Qwen3.
+# - Keep the draft fully on the GPU, or it slows things down instead.
+# - Biggest gains are on large dense models. MoEs with experts in RAM gain less, because verifying
+#   several tokens at once touches more experts.
+# spec-type: draft-simple
+# hf-repo-draft: Qwen/Qwen3-0.6B-GGUF:Q8_0   # or model-draft: ~/models/Qwen3-0.6B-Q8_0.gguf
+# spec-draft-ngl: all     # whole draft model on the GPU
+# spec-draft-n-max: 8     # max tokens drafted per step (default 3); raise it if most guesses get accepted
+# spec-draft-p-min: 0.75  # stop drafting early once the draft model's confidence drops below this
+#
+# No draft model? `spec-type: ngram-mod` drafts by matching text already in the context (great for
+# code edits and RAG) and costs no extra memory. See docs/speculative.md in the llama.cpp repo.
