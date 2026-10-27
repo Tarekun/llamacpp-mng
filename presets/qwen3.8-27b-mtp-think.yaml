@@ -1,0 +1,44 @@
+# --- Model -------------------------------------------------------------------
+hf-repo: unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M   # dense 27B, 16.5 GB; also UD-Q4_K_XL (17.6 GB), UD-IQ4_XS (14.3 GB)
+alias: qwen3.8-27b-mtp
+
+# --- Sampling (thinking mode, from the model card) ---------------------------
+temp: 1.0
+top-k: 20
+top-p: 0.95
+min-p: 0.0
+reasoning: "on"
+presence-penalty: 0.0
+repeat-penalty: 1.0
+# reasoning-budget: 4096 # cap thinking tokens (-1 = unlimited)
+
+# --- Context and KV cache ----------------------------------------------------
+ctx-size: 32768        # max tokens (prompt + reply) per request; KV cache memory grows linearly with it
+flash-attn: "on"       # faster, leaner attention; needed to quantize the V cache. Quote on/off!
+cache-type-k: q8_0     # KV cache precision: f16 (default), q8_0 halves its memory at ~no quality cost,
+cache-type-v: q8_0     # q4_0 quarters it but starts to hurt quality on long contexts
+
+# --- Server ------------------------------------------------------------------
+host: 0.0.0.0
+port: 12345
+parallel: 1            # MTP gains are measured on a single slot; more slots split ctx-size between them
+# api-key: change-me   # require `Authorization: Bearer change-me` on requests
+
+# --- GPU offloading ----------------------------------------------------------
+# This is a dense model: every layer is used for every token, so unlike the MoE presets there are
+# no experts to park in RAM (n-cpu-moe/cpu-moe do nothing). With little VRAM the layers that don't
+# fit run on the CPU, and speed drops roughly in proportion to how many.
+#
+# Left unset, llama-server's `fit` (on by default) picks how many layers go to the GPU.
+# n-gpu-layers: all      # force every layer onto the GPU (needs the whole model + KV cache to fit)
+# threads: 8             # CPU threads for the layers left in RAM; physical core count is usually best
+# fit: "off"             # disable auto-fitting, use exactly what's written here
+
+# --- Multi-token prediction (MTP) --------------------------------------------
+# The model was trained with an extra head that predicts the next few tokens itself, so it needs no
+# separate draft model. The big model verifies the guesses in one pass: same output quality, faster
+# decoding. llama.cpp downloads the MTP head (a ~1.4 GB sidecar file in the same repo) on its own.
+# The head costs a little extra VRAM, and the speedup shrinks when many layers run on the CPU.
+spec-type: draft-mtp
+spec-draft-n-max: 2     # tokens drafted per step; start at 2, try 3-4 if most guesses get accepted
+# spec-draft-p-min: 0.75  # stop drafting early once the head's confidence drops below this
