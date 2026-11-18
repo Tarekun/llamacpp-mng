@@ -13,7 +13,7 @@ top-p: 0.95
 # reasoning-budget: 4096 # cap thinking tokens (-1 = unlimited)
 
 # --- Context and KV cache ----------------------------------------------------
-ctx-size: 131072        # max tokens (prompt + reply) per request; KV cache memory grows linearly with it
+ctx-size: 262144        # max tokens (prompt + reply) per request; KV cache memory grows linearly with it
 flash-attn: "on"       # faster, leaner attention; needed to quantize the V cache. Quote on/off!
 cache-type-k: q8_0     # KV cache precision: f16 (default), q8_0 halves its memory at ~no quality cost,
 cache-type-v: q8_0     # q4_0 quarters it but starts to hurt quality on long contexts
