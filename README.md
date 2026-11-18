@@ -80,3 +80,25 @@ llamacpp-mng serve ./some/config.yaml      # or any YAML file
 llamacpp-mng serve qwen3 -- --port 9000    # extra flags after -- override the config
 llamacpp-mng serve qwen3 --dry-run         # just print the command
 ```
+
+## Serve several models on one port
+
+Pass a directory instead of a file to serve every `*.yaml` in it (not recursive) from a single
+server, like ollama:
+
+```sh
+llamacpp-mng serve presets/
+llamacpp-mng serve ~/.llamacpp/configs/
+llamacpp-mng serve presets/ -- --sleep-idle-seconds 300   # also unload a model after 5 idle minutes
+```
+
+This runs `llama-server` in router mode. No model is loaded at start: each one loads on the
+first request that names it in the `"model"` field, using its `alias` (or the file name when it has
+none), so clients use the same name as when serving it alone. `GET /v1/models` lists them all.
+
+- Only one model is kept in memory: requesting another one unloads the previous one. To keep more
+  loaded at once, add `-- --models-max 2`.
+- `host`, `port` and `api-key` apply to the whole server, so the configs in the directory must agree
+  on them (or leave them out).
+- The configs are turned into llama.cpp's preset format in `~/.llamacpp/router.ini`, rewritten
+  on every `serve`. Don't edit it by hand.
