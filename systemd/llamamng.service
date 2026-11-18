@@ -1,0 +1,22 @@
+# Serves every config in ~/.llamacpp/configs on one port, loading models on request.
+# Install it as described in the README, "Run as a service".
+# Logs: journalctl -u llamamng -f
+
+[Unit]
+Description=llama.cpp model server (llamacpp-mng)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=danie
+# Point it at another directory of configs, or add llama-server flags after `--`,
+# e.g. `-- --sleep-idle-seconds 300` to unload a model after 5 idle minutes.
+WorkingDirectory=/home/danie/codice/llamacpp-mng
+ExecStart=/home/danie/.local/bin/uv run llamacpp_mng.py serve ./presets
+# Optional: environment variables such as HF_TOKEN=... for gated Hugging Face models.
+# EnvironmentFile=-/home/danie/.llamacpp/env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
