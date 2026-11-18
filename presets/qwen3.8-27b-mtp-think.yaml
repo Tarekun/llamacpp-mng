@@ -1,6 +1,6 @@
 # --- Model -------------------------------------------------------------------
 hf-repo: unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M   # dense 27B, 16.5 GB; also UD-Q4_K_XL (17.6 GB), UD-IQ4_XS (14.3 GB)
-alias: qwen3.8-27b-mtp
+alias: qwen3.8-27b-mtp-think
 
 # --- Sampling (thinking mode, from the model card) ---------------------------
 temp: 1.0
